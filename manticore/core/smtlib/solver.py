@@ -336,12 +336,25 @@ class Z3Solver(Solver):
 
     # get-all-values min max minmax
     #@memoized
-    def get_all_values(self, constraints, expression, maxcnt=30000, silent=False):
-        ''' Returns a list with all the possible values for the symbol x'''
+    def get_all_values(self, constraints, expression, maxcnt=None, silent=False):
+        """
+        Returns a list with all the possible values for the symbol x
+
+        :param constraints:
+        :param expression:
+        :param maxcnt: max number of values to solve for. None uses some sensible default high number.
+        :type maxcnt: int or None
+        :param silent:
+        :return:
+        """
+
         if not isinstance(expression, Expression):
             return [expression]
         assert isinstance(constraints, ConstraintSet)
         assert isinstance(expression, Expression)
+
+        if maxcnt is None:
+            maxcnt = 30000
 
         with constraints as temp_cs:
             if isinstance(expression, Bool):

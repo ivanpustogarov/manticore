@@ -304,6 +304,32 @@ class State(Eventful):
     def must_be_true(self, expr):
         return not self._solver.can_be_true(self._constraints, expr == False)
 
+    def solve(self, expr, nsolves=1):
+        """
+        Concretize a symbolic :class:`~manticore.core.smtlib.expression.Expression` into
+        one or many solution(s).
+
+        :param manticore.core.smtlib.Expression expr: Symbolic value to concretize
+        :param nsolves: Number of solutions to attempt to solve for. None means get all solutions.
+        :type nsolves: int or None
+        :return: Concrete value. If nsolves==1, returns a single int, otherwise a list.
+        :rtype: int or list[int]
+        """
+        ret =  self._solver.get_all_values(self._constraints, expr, nsolves, silent=True)
+        if isinstance(ret, tuple):
+            try:
+                return ''.join(map(chr, ret))
+            except:
+                pass
+            try:
+                return ''.join(ret)
+            except:
+                pass
+        if nsolves == 1:
+            return ret[0]
+        else:
+            return ret
+
     def solve_one(self, expr):
         '''
         Concretize a symbolic :class:`~manticore.core.smtlib.expression.Expression` into
