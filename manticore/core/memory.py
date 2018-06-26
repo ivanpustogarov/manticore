@@ -115,7 +115,7 @@ class Map(object):
 
     def access_ok(self, access):
         ''' Check if there is enough permissions for access '''
-        print 'xxxx perms', self.perms, 'access', access
+        # print 'xxxx perms', self.perms, 'access', access
         for c in access:
             if c not in self.perms:
                 return False
@@ -808,7 +808,7 @@ class Memory(object):
             if index not in self:
                 return False
             m = self.map_containing(index)
-            print 'map cont access ok', m
+            # print 'map cont access ok', m
             return force or m.access_ok(access)
 
     # write and read potentially symbolic bytes at symbolic indexes
@@ -896,7 +896,7 @@ class Memory(object):
         if isinstance(index, slice):
             result = self.read(index.start, index.stop - index.start)
         else:
-            print 'trying to read'
+            # print 'trying to read'
             result = self.read(index, 1)[0]
         return result
 
@@ -1095,16 +1095,25 @@ class LazySMemory(SMemory):
     Currently does not support cross-page reads/writes.
     '''
 
-    def __init__(self, constraints, *args, **kwargs):
+    def __init__(self, constraints, backing_array=None, *args, **kwargs):
         super(LazySMemory, self).__init__(constraints, *args, **kwargs)
         # self.bigarray = ArrayMap(0, 2**32 - 1, 'rwx', 32, name='bigarray')
         # self.bigarray = ArrayMap(0, 2**32 - 1, 'rwx', 32, name='bigarray')
-        self.bigarray = constraints.new_array()
+        self.bigarray = constraints.new_array(index_bits=self.memory_bit_size, name='bigarray')
+        print 'made a new array!'
         # self._add(bigarray)
+
+    def __reduce__(self):
+        return (self.__class__, (self.constraints,), {'backing_array': self.bigarray})
+
+    def __setstate__(self, state):
+        # print 'loading array'
+        self.bigarray = state['backing_array']
+
 
     def mmap(self, addr, size, perms, name=None, **kwargs):
         assert isinstance(addr, (int, long))
-        print 'mmapping', hex(addr)
+        # print 'mmapping', hex(addr)
         return addr
 
 
@@ -1155,7 +1164,6 @@ class LazySMemory(SMemory):
         assert addr is None or isinstance(addr, (int, long)), 'Address shall be concrete'
         assert addr < self.memory_size, 'Address too big'
         assert size > 0
-
         print 'mmap request', hex(addr), size, perms, filename, hex(offset)
 
         # address is rounded down to the nearest multiple of the allocation granularity
@@ -1191,16 +1199,16 @@ class LazySMemory(SMemory):
         print 'len fdata', len(fdata)
 
         for i in xrange(towrite):
-            print hex(addr+i), fdata[offset+i].encode('hex')
+            # print hex(addr+i), fdata[offset+i].encode('hex')
             self.bigarray[addr+i:addr+i+1] = fdata[offset+i]
-            print 'x', self.bigarray[addr+i]
+            #print 'x', self.bigarray[addr+i]
             # from ..core.smtlib import pretty_print
             # print pretty_print(self.bigarray[addr+i])
-            break
+            # break
 
         # Create the map
         # m = FileMap(addr, size, perms, filename, offset)
-
+        # import pdb; pdb.set_trace()
         # # Okay, ready to alloc
         # self._add(m)
         #
@@ -1234,9 +1242,9 @@ class LazySMemory(SMemory):
 
     def read(self, address, size, force=False):
         page_offset = address
-        print 'mem read', hex(address), size
+        #print 'mem read', hex(address), size
         ret = self.bigarray[page_offset:page_offset + size]
-        print 'got the ret', ret
+        #print 'got the ret', ret
         return ret
 
         # m = self.map_containing(address)
@@ -1248,11 +1256,11 @@ class LazySMemory(SMemory):
 
     def write(self, address, value, force=False):
         page_offset = address
-        # print 'mem write', hex(address), value
+        #print 'mem write', hex(address), value
         from ..core.smtlib import pretty_print
         # print 'pre write', pretty_print(self.bigarray.array)
         self.bigarray[page_offset:page_offset + len(value)] = value
-        # print 'post write', pretty_print(self.bigarray.array)
+        #print 'post write', pretty_print(self.bigarray.array)
         return
 
         # m = self.map_containing(address)

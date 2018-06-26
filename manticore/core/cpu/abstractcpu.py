@@ -600,7 +600,7 @@ class Cpu(Eventful):
         '''
         if size is None:
             size = self.address_bit_size
-        print size, 'ugh'
+        # print size, 'ugh'
         # assert size in SANE_SIZES
         self._publish('will_read_memory', where, size)
 
@@ -754,27 +754,30 @@ class Cpu(Eventful):
         for address in xrange(pc, pc + self.max_instr_width):
             # This reads a byte from memory ignoring permissions
             # and concretize it if symbolic
-            print self.memory
+            # print self.memory
             if not self.memory.access_ok(address, 'x'):
                 break
 
-            print 'going to get c'
-            print 'self memory xx', self.memory
+            # print 'going to get c'
+            # print 'self memory xx', self.memory
             c = self.memory[address]
             from ..smtlib import *
+            # print 'arr select from ', c.array # pretty_print(c.array)            
+            # import pdb; pdb.set_trace()
             # print 'aaaaaaaa', pretty_print(self.memory.bigarray.array)
-            print 'got c',c
+            # print 'got c',c
 
-            print pretty_print(c)
-            print solver.get_all_values(ConstraintSet(), c)
-            print len(solver.get_all_values(ConstraintSet(), c))
+            # print c
+            # print solver.get_all_values(self.memory.constraints, c)
+            # print len(solver.get_all_values(self.memory.constraints, c))
 
-            assert 0
+            #assert 0
 
             if issymbolic(c):
-                assert isinstance(c, BitVec) and c.size == 8
-                if isinstance(c, Constant):
-                    c = chr(c.value)
+                solutions = solver.get_all_values(self.memory.constraints, c)
+                # assert isinstance(c, BitVec) and c.size == 8
+                if len(solutions) == 1:
+                    c = chr(solutions[0])
                 else:
                     logger.error('Concretize executable memory %r %r', c, text)
                     raise ConcretizeMemory(self.memory,
@@ -787,7 +790,7 @@ class Cpu(Eventful):
         # Pad potentially incomplete instruction with zeroes
 
         code = text.ljust(self.max_instr_width, '\x00')
-        print 'got the code', code.encode('hex')
+        # print 'got the code', code.encode('hex')
 
         try:
             # decode the instruction from code
@@ -823,7 +826,7 @@ class Cpu(Eventful):
         '''
         Decode, and execute one instruction pointed by register PC
         '''
-        print 'ugh yo'
+        # print 'ugh yo'
         if issymbolic(self.PC):
             raise ConcretizeRegister(self, 'PC', policy='ALL')
 
@@ -832,7 +835,7 @@ class Cpu(Eventful):
 
         self._publish('will_decode_instruction', self.PC)
 
-        print 'decoding pc', hex(self.PC)
+        # print 'decoding pc', hex(self.PC)
         insn = self.decode_instruction(self.PC)
         self._last_pc = self.PC
 
@@ -853,9 +856,9 @@ class Cpu(Eventful):
             implementation = getattr(self, name, None)
 
             if implementation is not None:
-                print 'RAN INSTRUCTION', hex(self.PC)
+                # print 'WILL RUN INSTRUCTION', hex(self.PC)
                 implementation(*insn.operands)
-                print 'RAN INSTRUCTION', hex(self.PC)
+                # print 'RAN INSTRUCTION', hex(self.PC)
 
             else:
                 text_bytes = ' '.join('%02x' % x for x in insn.bytes)
