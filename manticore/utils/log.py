@@ -1,7 +1,6 @@
 import logging
 import sys
 import types
-from logging import DEBUG, WARNING, ERROR, INFO
 
 
 class ContextFilter(logging.Filter):
@@ -28,11 +27,11 @@ class ContextFilter(logging.Filter):
         return True
 
 
-manticore_verbosity = 0
+manticore_verbosity = 5
 all_loggers = []
 
 
-def init_logging(default_level=logging.WARNING):
+def init_logging():
     global all_loggers
     loggers = logging.getLogger().manager.loggerDict.keys()
 
@@ -50,7 +49,7 @@ def init_logging(default_level=logging.WARNING):
             continue
         logger.addHandler(handler)
         logger.propagate = False
-        logger.setLevel(default_level)
+        logger.setLevel(logging.WARNING)
         logger.addFilter(ctxfilter)
         logger.setState = types.MethodType(loggerSetState, logger)
         all_loggers.append(name)

@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from weakref import WeakValueDictionary
 from .smtlib import *
 import logging
-from ..utils.mappings import mmap, munmap
+from ..utils.mappings import _mmap, _munmap
 from ..utils.helpers import issymbolic
 
 logger = logging.getLogger(__name__)
@@ -34,11 +34,8 @@ class ConcretizeMemory(MemoryException):
     Raised when a symbolic memory cell needs to be concretized.
     '''
 
-    def __init__(self, mem, address, size, message=None, policy='MINMAX'):
-        if message is None:
-            self.message = "Concretizing memory address {} size {}".format(address, size)
-        else:
-            self.message = message
+    def __init__(self, mem, address, size, policy='MINMAX'):
+        self.message = "Concretizing memory address {} size {}".format(address, size)
         self.mem = mem
         self.address = address
         self.size = size
@@ -289,7 +286,7 @@ class FileMap(Map):
             fileobject.seek(0, 2)
             file_size = fileobject.tell()
             self._mapped_size = min(size, file_size - offset)
-            self._data = mmap(fileobject.fileno(), offset, self._mapped_size)
+            self._data = _mmap(fileobject.fileno(), offset, self._mapped_size)
         if overlay is not None:
             self._overlay = dict(overlay)
         else:
@@ -299,7 +296,7 @@ class FileMap(Map):
         return (self.__class__, (self.start, len(self), self.perms, self._filename, self._offset, self._overlay))
 
     def __del__(self):
-        munmap(self._data, self._mapped_size)
+        _munmap(self._data, self._mapped_size)
 
     def __repr__(self):
         return '<%s [%s+%x] 0x%016x-0x%016x %s>' % (self.__class__.__name__, self._filename, self._offset, self.start, self.end, self.perms)
@@ -771,7 +768,9 @@ class Memory(object):
 
     # write and read potentially symbolic bytes at symbolic indexes
     def read(self, addr, size, force=False):
+	#print "Memory.read(): Inside"
         if not self.access_ok(slice(addr, addr + size), 'r', force):
+	    print "Memory.read(): Raising InvalidMemoryAccess()"
             raise InvalidMemoryAccess(addr, 'r')
 
         assert size > 0
@@ -924,6 +923,7 @@ class SMemory(Memory):
         :param force: Whether to ignore permissions
         :rtype: list
         '''
+	#print "Inside SMemory.read()"
         size = self._get_size(size)
         assert not issymbolic(size)
 
@@ -978,7 +978,9 @@ class SMemory(Memory):
                     assert len(result) == offset + 1
             return map(Operators.CHR, result)
         else:
+	    #print "SMemory.read(): address is NOT symbolic"
             result = map(Operators.ORD, super(SMemory, self).read(address, size, force))
+	    #print "SMemory.read(): result = ", result
             for offset in range(size):
                 if address + offset in self._symbols:
                     for condition, value in self._symbols[address + offset]:

@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 import os
 import sys
 import time
@@ -21,13 +20,14 @@ from .core.executor import Executor
 from .core.state import State, TerminateState
 from .core.smtlib import solver, ConstraintSet
 from .core.workspace import ManticoreOutput
-from .platforms import linux, decree, evm
+from .platforms import linux, decree, evm, barebones
 from .utils.helpers import issymbolic, is_binja_disassembler
 from .utils.nointerrupt import WithKeyboardInterruptAs
 from .utils.event import Eventful
 from .core.plugin import Plugin, InstructionCounter, RecordSymbolicBranches, Visited, Tracer
 import logging
 from .utils import log
+
 
 logger = logging.getLogger(__name__)
 log.init_logging()
@@ -44,7 +44,7 @@ def make_binja(program, disasm, argv, env, symbolic_files, concrete_start=''):
     def _check_disassembler_present(disasm):
         if is_binja_disassembler(disasm):
             try:
-                import binaryninja  # noqa
+                import binaryninja
             except ImportError:
                 err = ("BinaryNinja not found! You MUST own a BinaryNinja version"
                        " that supports GUI-less processing for this option"
@@ -72,11 +72,11 @@ def make_decree(program, concrete_start='', **kwargs):
     if concrete_start != '':
         logger.info('Starting with concrete input: {}'.format(concrete_start))
     platform.input.transmit(concrete_start)
-    platform.input.transmit(initial_state.symbolicate_buffer('+' * 14, label='RECEIVE'))
+    platform.input.transmit(initial_state.symbolicate_buffer('+'*14, label='RECEIVE'))
     return initial_state
 
 
-def make_linux(program, argv=None, env=None, entry_symbol=None, symbolic_files=None, concrete_start=''):
+def make_linux(program, argv=None, env=None, symbolic_files=None, concrete_start=''):
     env = {} if env is None else env
     argv = [] if argv is None else argv
     env = ['%s=%s' % (k, v) for k, v in env.items()]
@@ -84,17 +84,9 @@ def make_linux(program, argv=None, env=None, entry_symbol=None, symbolic_files=N
     logger.info('Loading program %s', program)
 
     constraints = ConstraintSet()
+    # Platfrom includes memory, cpu, emulated Linux system calls
     platform = linux.SLinux(program, argv=argv, envp=env,
                             symbolic_files=symbolic_files)
-    if entry_symbol is not None:
-        entry_pc = platform._find_symbol(entry_symbol)
-        if entry_pc is None:
-            logger.error("No symbol for '%s' in %s", entry_symbol, program)
-            raise Exception("Symbol not found")
-        else:
-            logger.info("Found symbol '%s' (%x)", entry_symbol, entry_pc)
-            #TODO: use argv as arguments for function
-            platform.set_entry(entry_pc)
 
     initial_state = State(constraints, platform)
 
@@ -112,11 +104,45 @@ def make_linux(program, argv=None, env=None, entry_symbol=None, symbolic_files=N
     if any(issymbolic(x) for val in argv + env for x in val):
         platform.setup_stack([program] + argv, env)
 
-    platform.input.write(concrete_start)
+    platform.input.write(concrete_start) # write concrete input to stdin
 
     # set stdin input...
     platform.input.write(initial_state.symbolicate_buffer('+' * 256,
                                                           label='STDIN'))
+    return initial_state
+
+def make_barebones(program, argv=None, env=None, symbolic_files=None, concrete_start=''):
+    print "Hi there"
+    env = {} if env is None else env
+    argv = [] if argv is None else argv
+    env = ['%s=%s' % (k, v) for k, v in env.items()]
+
+    logger.info('Loading program %s', program)
+
+    constraints = ConstraintSet()
+    platform = barebones.SBareBones(program, argv=argv, envp=env,
+                            symbolic_files=symbolic_files)
+
+    initial_state = State(constraints, platform)
+
+    if concrete_start != '':
+        logger.info('Starting with concrete input: %s', concrete_start)
+
+    for i, arg in enumerate(argv):
+        argv[i] = initial_state.symbolicate_buffer(arg, label='ARGV%d' % (i + 1))
+
+    for i, evar in enumerate(env):
+        env[i] = initial_state.symbolicate_buffer(evar, label='ENV%d' % (i + 1))
+
+    # If any of the arguments or environment refer to symbolic values, re-
+    # initialize the stack
+    if any(issymbolic(x) for val in argv + env for x in val):
+        platform.setup_stack([program] + argv, env)
+
+    #platform.input.write(concrete_start)
+
+    # set stdin input...
+    #platform.input.write(initial_state.symbolicate_buffer('+' * 256, label='STDIN'))
     return initial_state
 
 
@@ -206,7 +232,7 @@ class Manticore(Eventful):
         self.subscribe('will_generate_testcase', self._generate_testcase_callback)
         self.subscribe('did_finish_run', self._did_finish_run_callback)
 
-        # Default plugins for now.. FIXME REMOVE!
+        # Default plugins for now.. FIXME?
         self.register_plugin(InstructionCounter())
         self.register_plugin(Visited())
         self.register_plugin(Tracer())
@@ -258,7 +284,7 @@ class Manticore(Eventful):
         plugin.manticore = None
 
     @classmethod
-    def linux(cls, path, argv=None, envp=None, entry_symbol=None, symbolic_files=None, concrete_start='', **kwargs):
+    def linux(cls, path, argv=None, envp=None, symbolic_files=None, concrete_start='', **kwargs):
         """
         Constructor for Linux binary analysis.
 
@@ -267,8 +293,6 @@ class Manticore(Eventful):
         :type argv: list[str]
         :param envp: Environment to provide to the binary
         :type envp: dict[str, str]
-        :param entry_symbol: Entry symbol to resolve to start execution
-        :type envp: str
         :param symbolic_files: Filenames to mark as having symbolic input
         :type symbolic_files: list[str]
         :param str concrete_start: Concrete stdin to use before symbolic inputt
@@ -277,7 +301,29 @@ class Manticore(Eventful):
         :rtype: Manticore
         """
         try:
-            return cls(make_linux(path, argv, envp, entry_symbol, symbolic_files, concrete_start), **kwargs)
+            return cls(make_linux(path, argv, envp, symbolic_files, concrete_start), **kwargs)
+        except elftools.common.exceptions.ELFError:
+            raise Exception('Invalid binary: {}'.format(path))
+
+    @classmethod
+    def barebones(cls, path, argv=None, envp=None, symbolic_files=None, concrete_start='', **kwargs):
+        """
+        Constructor for Linux binary analysis.
+
+        :param str path: Path to binary to analyze
+        :param argv: Arguments to provide to the binary
+        :type argv: list[str]
+        :param envp: Environment to provide to the binary
+        :type envp: dict[str, str]
+        :param symbolic_files: Filenames to mark as having symbolic input
+        :type symbolic_files: list[str]
+        :param str concrete_start: Concrete stdin to use before symbolic inputt
+        :param kwargs: Forwarded to the Manticore constructor
+        :return: Manticore instance, initialized with a Linux State
+        :rtype: Manticore
+        """
+        try:
+            return cls(make_barebones(path, argv, envp, symbolic_files, concrete_start), **kwargs)
         except elftools.common.exceptions.ELFError:
             raise Exception('Invalid binary: {}'.format(path))
 
@@ -382,6 +428,10 @@ class Manticore(Eventful):
 
     @property
     def running(self):
+        return self._executor._running.value
+
+    @property
+    def running(self):
         return self._executor.running
 
     def enqueue(self, state):
@@ -416,6 +466,7 @@ class Manticore(Eventful):
             target = self._executor.run
 
         if num_processes == 1:
+	    print "manticore.py:_start_workers(): going to execute target()"
             target()
         else:
             for _ in range(num_processes):
@@ -498,8 +549,9 @@ class Manticore(Eventful):
 
         # Imported straight from __main__.py; this will be re-written once the new
         # event code is in place.
+        import core.cpu
         import importlib
-        from . import platforms
+        import platforms
 
         with open(path, 'r') as fnames:
             for line in fnames.readlines():
@@ -601,11 +653,13 @@ class Manticore(Eventful):
 
     def _start_run(self):
         assert not self.running
-        self._publish('will_start_run', self._initial_state)
-
         if self._initial_state is not None:
+            self._publish('will_start_run', self._initial_state)
+
             self.enqueue(self._initial_state)
+	    print " >>> EXECUTE1 "
             self._initial_state = None
+	    print " >>> EXECUTE2 "
 
         # Copy the local main context to the shared conext
         self._executor._shared_context.update(self._context)
@@ -643,24 +697,12 @@ class Manticore(Eventful):
                 t.cancel()
         self._finish_run(profiling=should_profile)
 
-    #Fixme remove. terminate is used to TerminateState. May be confusing
     def terminate(self):
         '''
         Gracefully terminate the currently-executing run. Typically called from within
         a :func:`~hook`.
         '''
         self._executor.shutdown()
-
-    def shutdown(self):
-        '''
-        Gracefully terminate the currently-executing run. Typically called from within
-        a :func:`~hook`.
-        '''
-        self._executor.shutdown()
-
-    def is_shutdown(self):
-        ''' Returns True if shutdown was requested '''
-        return self._executor.is_shutdown()
 
     #############################################################################
     #############################################################################
@@ -703,6 +745,8 @@ class Manticore(Eventful):
         self._coverage_file = path
 
     def _did_finish_run_callback(self):
+        _shared_context = self.context
+
         with self._output.save_stream('command.sh') as f:
             f.write(' '.join(sys.argv))
 

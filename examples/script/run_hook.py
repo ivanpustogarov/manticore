@@ -10,20 +10,22 @@ the ability to read from memory.
 
 if __name__ == '__main__':
     path = sys.argv[1]
-    pc = int(sys.argv[2], 0)
+    #pc = int(sys.argv[2], 0)
 
     m = Manticore(path)
 
     # Trigger an event when PC reaches a certain value
-    @m.hook(pc)
+    #@m.hook(pc)
+    @m.hook(None)
     def reached_goal(state):
         cpu = state.cpu
 
-        assert cpu.PC == pc
+        #assert cpu.PC == pc
 
         instruction = cpu.read_int(cpu.PC)
-        print "Execution goal reached."
-        print "Instruction bytes: {:08x}".format(instruction)
+        #print "Execution goal reached."
+        #print "Instruction bytes: {:08x}".format(instruction)
+        print "0x{:016x}: {:08x}".format(cpu.PC,instruction)
 
     m.run()
 

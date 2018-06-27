@@ -6,11 +6,14 @@ import string
 from functools import wraps
 from itertools import islice, imap
 
+import capstone as cs
 import unicorn
 
 from .disasm import init_disassembler
-from ..smtlib import BitVec, Operators, Constant
-from ..memory import ConcretizeMemory, InvalidMemoryAccess
+from ..smtlib import Expression, Bool, BitVec, Array, Operators, Constant
+from ..memory import (
+    ConcretizeMemory, InvalidMemoryAccess, MemoryException, FileMap, AnonMap
+)
 from ...utils.helpers import issymbolic
 from ...utils.emulate import UnicornEmulator
 from ...utils.event import Eventful
@@ -24,7 +27,6 @@ register_logger = logging.getLogger('{}.registers'.format(__name__))
 
 class CpuException(Exception):
     ''' Base cpu exception '''
-
 
 class DecodeException(CpuException):
     '''
@@ -421,7 +423,7 @@ class SyscallAbi(Abi):
             if ret > min_hex_expansion:
                 ret_s = ret_s + '(0x{:x})'.format(ret)
 
-            platform_logger.debug('%s(%s) -> %s', model.__func__.__name__, args_s, ret_s)
+            platform_logger.debug('%s(%s) -> %s', model.im_func.func_name, args_s, ret_s)
 
 ############################################################################
 # Abstract cpu encapsulating common cpu methods used by platforms and executor.
@@ -602,8 +604,10 @@ class Cpu(Eventful):
             size = self.address_bit_size
         assert size in SANE_SIZES
         self._publish('will_read_memory', where, size)
+        #print('will_read_memory', where, size)
 
         data = self._memory.read(where, size / 8, force)
+	#print "DATA =",data
         assert (8 * len(data)) == size
         value = Operators.CONCAT(size, *map(Operators.ORD, reversed(data)))
 
@@ -750,7 +754,8 @@ class Cpu(Eventful):
 
         text = ''
         # Read Instruction from memory
-        for address in xrange(pc, pc + self.max_instr_width):
+        #for address in xrange(pc, pc + self.max_instr_width):
+        for address in range(pc, pc + self.max_instr_width):
             # This reads a byte from memory ignoring permissions
             # and concretize it if symbolic
             if not self.memory.access_ok(address, 'x'):

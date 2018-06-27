@@ -7,12 +7,13 @@ import capstone as cs
 
 from .abstractcpu import (
     Abi, SyscallAbi, Cpu, RegisterFile, Operand, instruction,
-    ConcretizeRegister, Interruption, Syscall, DivideByZeroError
+    ConcretizeRegister, ConcretizeRegister, ConcretizeArgument, Interruption,
+    Syscall, DivideByZeroError
 )
 
 
 from ..smtlib import Operators, BitVec, Bool, BitVecConstant, operator, visitors
-from ..memory import ConcretizeMemory
+from ..memory import MemoryException, ConcretizeMemory
 from ...utils.helpers import issymbolic
 from functools import reduce
 
@@ -606,7 +607,6 @@ class AMD64RegFile(RegisterFile):
     def sizeof(self, reg):
         return self._table[reg].size
 
-
 # Operand Wrapper
 class AMD64Operand(Operand):
     ''' This class deals with capstone X86 operands '''
@@ -748,7 +748,9 @@ class X86Cpu(Cpu):
         assert size in (16, cpu.address_bit_size)
         base, _, _ = cpu.get_descriptor(cpu.SS)
         address = cpu.STACK + base
+	#print "STACK =",cpu.STACK
         value = cpu.read_int(address, size)
+	#print "VALUE= ",value
         cpu.STACK = cpu.STACK + size / 8
         return value
 
@@ -889,13 +891,7 @@ class X86Cpu(Cpu):
         :param dest: destination operand.
         :param src: source operand.
         '''
-        # XXX bypass a capstone bug that incorrectly extends and computes operands sizes
-        # the bug has been fixed since capstone 4.0.alpha2 (commit de8dd26)
-        if src.size == 64 and src.type == 'immediate' and dest.size == 64:
-            arg1 = Operators.SEXTEND(src.read(), 32, 64)
-        else:
-            arg1 = src.read()
-        res = dest.write(dest.read() & arg1)
+        res = dest.write(dest.read() & src.read())
         # Defined Flags: szp
         cpu._calculate_logic_flags(dest.size, res)
 

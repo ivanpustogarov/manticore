@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 import os
 import random
 import logging
@@ -6,10 +5,9 @@ import signal
 
 from ..utils.nointerrupt import WithKeyboardInterruptAs
 from ..utils.event import Eventful
-from .smtlib import Z3Solver, Expression, SolverException
+from .smtlib import solver, Expression, SolverException
 from .state import Concretize, TerminateState
-
-from .workspace import Workspace
+from workspace import Workspace
 from multiprocessing.managers import SyncManager
 from contextlib import contextmanager
 
@@ -385,7 +383,7 @@ class Executor(Eventful):
             setstate(state, solutions[0])
             return state
 
-        logger.info("Forking. Policy: %s. Values: %s",
+        logger.info("Forking, about to store. (policy: %s, values: %s)",
                     policy,
                     ', '.join('0x{:x}'.format(sol) for sol in solutions))
 
@@ -408,7 +406,7 @@ class Executor(Eventful):
                 # maintain a list of childres for logging purpose
                 children.append(state_id)
 
-        logger.info("Forking current state into states %r", children)
+        logger.debug("Forking current state into states %r", children)
         return None
 
     def run(self):
@@ -420,12 +418,14 @@ class Executor(Eventful):
         current_state = None
         current_state_id = None
 
+
+        #print "executor.py: Executor.run(): Inside"
         with WithKeyboardInterruptAs(self.shutdown):
             # notify siblings we are about to start a run
             self._notify_start_run()
 
             logger.debug("Starting Manticore Symbolic Emulator Worker (pid %d).", os.getpid())
-            solver = Z3Solver()
+
             while not self.is_shutdown():
                 try:  # handle fatal errors: exceptions in Manticore
                     try:  # handle external (e.g. solver) errors, and executor control exceptions
@@ -458,6 +458,7 @@ class Executor(Eventful):
 
                         # Allows to terminate manticore worker on user request
                         while not self.is_shutdown():
+			    #print "Going to execute a state", current_state
                             if not current_state.execute():
                                 break
                         else:
@@ -504,7 +505,7 @@ class Executor(Eventful):
                     current_state = None
                     logger.setState(None)
 
-            assert current_state is None or self.is_shutdown()
+            assert current_state is None
 
             # notify siblings we are about to stop this run
             self._notify_stop_run()
