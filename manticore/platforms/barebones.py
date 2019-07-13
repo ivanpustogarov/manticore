@@ -176,6 +176,8 @@ class BareBones(Platform):
         # Install event forwarders
         for proc in self.procs:
             self.forward_events_from(proc)
+	# IVAN DEBUG
+	print "_execve: returning"
 
     def _mk_proc(self, arch):
         mem = Memory32() if arch in {'i386', 'armv7'} else Memory64()
@@ -285,6 +287,9 @@ class BareBones(Platform):
         https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt
         '''
 
+        # Ivan: we don't need this for barebones as a) we already have the 
+	# memory dump for this range, and b) we are inside kernel space
+        return 0
         page_data = bytearray('\xf1\xde\xfd\xe7' * 1024)
 
         # Extracted from a RPi2
@@ -2150,7 +2155,7 @@ class SBareBones(BareBones):
         if bytes_concretized > 0:
             logger.debug("Concretized {} written bytes.".format(bytes_concretized))
 
-        return super(SLinux, self)._transform_write_data(concrete_data)
+        return super(SBareBones, self)._transform_write_data(concrete_data)
 
     # Dispatchers...
 

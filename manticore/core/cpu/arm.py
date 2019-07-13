@@ -26,9 +26,11 @@ def HighBit(n):
 def instruction(body):
     @wraps(body)
     def instruction_implementation(cpu, *args, **kwargs):
+        logger.info("Inside intruction armcpu decorator, body = {}".format(body)) # IVAN DEBUG
         ret = None
 
         should_execute = cpu.should_execute_conditional()
+        logger.info("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
 
         if cpu._at_symbolic_conditional:
             cpu._at_symbolic_conditional = False
@@ -936,6 +938,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def B(cpu, dest):
+        logger.debug("B instruction impl") # IVAN DEBUG
         cpu.PC = dest.read()
 
     @instruction
@@ -946,6 +949,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def BLE(cpu, dest):
+        logger.info("BLE instruction impl") # IVAN DEBUG
         cpu.PC = Operators.ITEBV(cpu.address_bit_size,
                                  cpu.regfile.read('APSR_Z'),
                                  dest.read(),
@@ -986,6 +990,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def CMP(cpu, reg, compare):
+        logger.debug("executing instr CMP") # IVAN DEBUG
         notcmp = ~compare.read() & Mask(cpu.address_bit_size)
         cpu._ADD(reg.read(), notcmp, 1)
 

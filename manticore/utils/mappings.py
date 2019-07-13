@@ -37,7 +37,7 @@ munmap_function.restype = ctypes.c_int
 munmap_function.argtype = [ctypes.c_void_p, ctypes.c_size_t]
 
 
-def mmap(fd, offset, size):
+def _mmap(fd, offset, size):
     prot = MMAP.PROT_READ | MMAP.PROT_WRITE
     flags = MMAP.MAP_PRIVATE
 
@@ -50,6 +50,9 @@ def mmap(fd, offset, size):
     return ctypes.cast(result, ctypes.POINTER(ctypes.c_char))
 
 
-def munmap(address, size):
+def _munmap(address, size):
     result = munmap_function(address, size)
     assert result == 0
+
+mmap = _mmap
+munmap = _munmap

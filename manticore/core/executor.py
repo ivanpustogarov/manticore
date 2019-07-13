@@ -459,12 +459,19 @@ class Executor(Eventful):
                         # Allows to terminate manticore worker on user request
                         while not self.is_shutdown():
 			    #print "Going to execute a state", current_state
+                            logger.info("Going to execute a state") # IVAN DEBUG
                             if not current_state.execute():
                                 break
+			    # IVAN DEBUG
+			    #break
                         else:
                             # Notify this worker is done
                             self._publish('will_terminate_state', current_state, current_state_id, 'Shutdown')
                             current_state = None
+
+			# IVAN DEBUG
+			#break
+
 
                     # Handling Forking and terminating exceptions
                     except Concretize as e:
@@ -473,6 +480,7 @@ class Executor(Eventful):
                         # setstate()
 
                         logger.debug("Generic state fork on condition")
+                        logger.info("Generic state fork on condition") # IVAN DEBUG
                         current_state = self.fork(current_state, e.expression, e.policy, e.setstate)
 
                     except TerminateState as e:

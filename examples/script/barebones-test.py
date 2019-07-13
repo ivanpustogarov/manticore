@@ -17,13 +17,17 @@ import sys
 import Queue
 import struct
 import itertools
+import re
+import logging
 
-#sys.path.append('/home/ivan/Workspaces/manticore/manticore')
+sys.path.append('/home/ivan/Workspaces/manticore-ivan/manticore')
 from manticore import Manticore
-from manticore.core.plugin import ExtendedTracer, Follower, Plugin
+from manticore.core.plugin import ExtendedTracer, Follower, Plugin, ExamplePlugin
 from manticore.core.smtlib.constraints import ConstraintSet
 from manticore.core.smtlib import Z3Solver, solver
 from manticore.core.smtlib.visitors  import pretty_print as pp
+
+#from .state import Concretize, TerminateState
 
 import copy
 from manticore.core.smtlib.expression import *
@@ -31,7 +35,7 @@ from manticore.core.smtlib.expression import *
 #prog = '../linux/simpleassert'
 prog = './hello'
 main_end = 0x004004e0
-VERBOSITY = 5
+VERBOSITY = 3
 
 def _partition(pred, iterable):
     t1, t2 = itertools.tee(iterable)
@@ -57,6 +61,15 @@ class TraceReceiver(Plugin):
         total = len(self._trace)
         log('Recorded concrete trace: {}/{} instructions, {}/{} writes'.format(
             len(instructions), total, len(writes), total))
+
+logger = logging.getLogger(__name__)
+class InstructionFollower(Plugin):
+
+    def will_execute_instruction_callback(self, state, pc, instruction):
+        #print("will_execute_instruction {} {} {}".format(state, hex(pc), instruction))
+	if(pc==0x8000df00):
+            raise TerminateState("Reached 0x8000df00, terminating.", testcase=False)
+
 
 def flip(constraint):
     '''
@@ -251,28 +264,96 @@ def concrete_input_to_constraints(ci, prev=None):
     log('permuting constraints and adding {} constraints sets to queue'.format(len(new_constraints)))
     return new_constraints, datas
 
+# QMP and Mantcore use slighltl different register naming convention
+# This function returns a mcore register name given a qmp register name,
+# e.g. 'R00' -> 'R0' or 'd08' -> 'D8'
+def qmpr2mcorer(regname):
+    qmp_register_names_RX = ("R00", "R01","R02","R03","R04","R05","R06","R07","R08","R09","R10","R11","R12","R13","R14","R15")
+    qmp_register_names_DX = ('d00', 'd01', 'd02', 'd03', 'd04', 'd05', 'd06', 'd07', 'd08',
+                         'd09', 'd10', 'd11', 'd12', 'd13', 'd14', 'd15', 'd16',
+                         'd17', 'd18', 'd19', 'd20', 'd21', 'd22', 'd23', 'd24',
+                         'd25', 'd26', 'd27', 'd28', 'd29', 'd30', 'd31')
+    mcore_register_names_RX = ("R0", "R1","R2","R3","R4","R5","R6","R7","R8","R9","R10","R11","R12","R13","R14","R15")
+    mcore_register_names_DX = ('D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
+                         'D9', 'D10', 'D11', 'D12', 'D13', 'D14', 'D15', 'D16',
+                         'D17', 'D18', 'D19', 'D20', 'D21', 'D22', 'D23', 'D24',
+                         'D25', 'D26', 'D27', 'D28', 'D29', 'D30', 'D31')
+    if regname in qmp_register_names_RX:
+        return mcore_register_names_RX[qmp_register_names_RX.index(regname)]
+    elif regname in qmp_register_names_DX:
+        return mcore_register_names_DX[qmp_register_names_DX.index(regname)]
+    else:
+        return None
+
+
+# Read file qmp-registers.txt in the current folder and
+# update Manticore registers. Note that in Manticore we dont have
+# s00-s63 registers
+#
+# @param m Manticore instance with an initial state to be updated
+# @type class Manticore
+def initialize_registers(state):
+    filename = "qmp-registers.txt"
+    try:
+        f= open(filename,"r")
+    except FileNotFoundError:
+        print "[-] File ", filename, " does not exist!"
+	return -1
+    contents = f.read()
+
+    # R01 -- R15
+    register_names = ("R00", "R01","R02","R03","R04","R05","R06","R07","R08","R09","R10","R11","R12","R13","R14","R15")
+    for regname in register_names:
+        result = re.search("("+regname+")=([0-9a-f]{8})",contents)
+	if result==None:
+	    print "filename ", filename, " does not contains value for register ",regname,". Bug? We should abort!"
+	    return -1
+	mcore_regname = qmpr2mcorer(result.group(1))
+	reg_value = result.group(2)
+        print "Setting ",mcore_regname," --> ",reg_value
+	state.cpu.regfile.write(mcore_regname, int(reg_value, 16))
+
+    # D01 -- R31
+    register_names = ('d00', 'd01', 'd02', 'd03', 'd04', 'd05', 'd06', 'd07', 'd08',
+                         'd09', 'd10', 'd11', 'd12', 'd13', 'd14', 'd15', 'd16',
+                         'd17', 'd18', 'd19', 'd20', 'd21', 'd22', 'd23', 'd24',
+                         'd25', 'd26', 'd27', 'd28', 'd29', 'd30', 'd31')
+    for regname in register_names:
+        result = re.search("("+regname+")=([0-9a-f]{16})",contents)
+	if result==None:
+	    print "filename ", filename, " does not contains value for register ",regname,". Bug? We should abort!"
+	    return -1
+	mcore_regname = qmpr2mcorer(result.group(1))
+	reg_value = result.group(2)
+        print "Setting ",mcore_regname," --> ",reg_value
+	state.cpu.regfile.write(mcore_regname, int(reg_value, 16))
 
 def main():
     global main_end
     #m1 = Manticore.linux(prog, concrete_start=inp, workspace_url='mem:')
     #m1 = Manticore.linux(prog, concrete_start="abc", workspace_url='mem:')
     #m1 = Manticore.barebones(prog, concrete_start="abc", workspace_url='mem:')
+
+
+
     m1 = Manticore.barebones("img.elf")
-    #m1 = Manticore.linux("img.elf")
     m1.verbosity(VERBOSITY)
-    #m1._initial_state.cpu.RSP = 0x0000000000601000
 
-    # /* Allocate memoro for stack */
-    #stack_size = 0x21000
-    #stack_top = 0x800000000000
-    #stack_base = stack_top - stack_size
-    #stack = m1._initial_state.cpu.memory.mmap(stack_base, stack_size, 'rwx', name='stack') + stack_size
-    #m1._initial_state.cpu.STACK = stack
+    # Now let's read the registers
+    print "[+] Reading registers"
+    initialize_registers(m1.initial_state)
 
-    # /* Set the program counter to point at main() */
-    #m1._initial_state.cpu.PC = 0x004004d6
-    m1._initial_state.cpu.PC = 0xffffffffa0059050
-    m1._initial_state.cpu.STACK = 0xffff88000606df00
+    #m1.initial_state.cpu.PC = 0x800df0c4
+    #m1.initial_state.cpu.STACK = 0xbf9f7fa8  
+    print "R15=",hex(m1.initial_state.cpu.R15)
+    print "PC=",hex(m1.initial_state.cpu.PC)
+    print "STACK=",hex(m1.initial_state.cpu.STACK)
+    print "R13=",hex(m1.initial_state.cpu.R13)
+    print "D24=",hex(m1.initial_state.cpu.D24)
+    #exit(0)
+
+
+
     #m1._initial_state.cpu.PC = 0x00000000a0059050
     #print m1._initial_state.cpu
     #exit(0);
@@ -288,6 +369,31 @@ def main():
     #m1._initial_state.cpu.write_int(0x00601030, m1._initial_state.new_symbolic_value(8,label="myval"), size=8)
     #m1._initial_state.cpu.write_bytes(0x00601030, m1._initial_state.new_symbolic_value(8))
     #def write_int(self, where, expression, size=None, force=False):
+
+    #m1.register_plugin(InstructionFollower())
+
+
+    # Trigger an event when PC reaches a certain value
+    end_address = 0x8000df00
+    #end_address = 0x8000df00
+    #end_address =  0x7f000070
+    #end_address =  0x7f000034
+    @m1.hook(end_address)
+    def reached_goal(state):
+        cpu = state.cpu
+        assert cpu.PC == end_address
+        #instruction = cpu.read_int(cpu.PC)
+        print "Execution goal reached (pc={}). Terminating state".format(hex(end_address))
+	#m1.terminate()
+	state.abandon()
+        #print "Instruction bytes: {:08x}".format(instruction)
+        #print "0x{:016x}: {:08x}".format(cpu.PC,instruction)
+
+    taint_id = 'taint_A'
+
+    m1.initial_state.cpu.R1 = m1.initial_state.new_symbolic_value(32,taint=(taint_id,))
+    print "R1=",m1.initial_state.cpu.R1
+    #exit(0)
     m1.run(procs=1)
     exit(0);
     #return r.trace
@@ -323,28 +429,6 @@ def main():
 
     log('paths found: {}'.format(len(traces)))
 
-#def main():
-#    mem = Memory64()
-#    cpu = AMD64Cpu(mem)
-#    mem.mmap(0x08070000, 0x1000, 'rwx')
-#    mem[0x08070300] = '\xff'
-#    mem[0x080702ff] = '\xd5'
-#    cpu.EIP = 0x80702ff
-#    cpu.AH = 0x0
-#    cpu.ZF = False
-#    cpu.AL = 0x30
-#    cpu.PF = True
-#    cpu.SF = False
-#    cpu.execute()
-#
-#    self.assertEqual(mem[0x8070300], '\xff')
-#    self.assertEqual(mem[0x80702ff], '\xd5')
-#    self.assertEqual(cpu.EIP, 134677249L)
-#    self.assertEqual(cpu.AH, 0L)
-#    self.assertEqual(cpu.ZF, False)
-#    self.assertEqual(cpu.AL, 48L)
-#    self.assertEqual(cpu.PF, True)
-#    self.assertEqual(cpu.SF, False)
 
     
 
