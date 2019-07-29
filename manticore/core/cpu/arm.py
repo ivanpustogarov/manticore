@@ -26,19 +26,20 @@ def HighBit(n):
 def instruction(body):
     @wraps(body)
     def instruction_implementation(cpu, *args, **kwargs):
-        logger.info("Inside intruction armcpu decorator, body = {}".format(body)) # IVAN DEBUG
+        #logger.info("Inside intruction armcpu decorator, body = {}".format(body)) # IVAN DEBUG
         ret = None
 
         should_execute = cpu.should_execute_conditional()
-        logger.info("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
+        #logger.info("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
 
-        if cpu._at_symbolic_conditional:
-            cpu._at_symbolic_conditional = False
+        if cpu._at_symbolic_conditional == cpu.instruction.address:
+            cpu._at_symbolic_conditional = None
             should_execute = True
         else:
             if issymbolic(should_execute):
                 # Let's remember next time we get here we should not do this again
-                cpu._at_symbolic_conditional = True
+                logger.info("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
+                cpu._at_symbolic_conditional = cpu.instruction.address
                 i_size = cpu.address_bit_size / 8
                 cpu.PC = Operators.ITEBV(cpu.address_bit_size, should_execute, cpu.PC - i_size,
                                          cpu.PC)
@@ -360,7 +361,7 @@ class Armv7Cpu(Cpu):
     def __init__(self, memory):
         self._it_conditional = list()
         self._last_flags = {'C': 0, 'V': 0, 'N': 0, 'Z': 0, 'GE': 0}
-        self._at_symbolic_conditional = False
+        self._at_symbolic_conditional = None
         self._mode = cs.CS_MODE_ARM
         super(Armv7Cpu, self).__init__(Armv7RegisterFile(), memory)
 
@@ -938,7 +939,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def B(cpu, dest):
-        logger.debug("B instruction impl") # IVAN DEBUG
+        #logger.debug("B instruction impl") # IVAN DEBUG
         cpu.PC = dest.read()
 
     @instruction
@@ -949,7 +950,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def BLE(cpu, dest):
-        logger.info("BLE instruction impl") # IVAN DEBUG
+        #logger.info("BLE instruction impl") # IVAN DEBUG
         cpu.PC = Operators.ITEBV(cpu.address_bit_size,
                                  cpu.regfile.read('APSR_Z'),
                                  dest.read(),
@@ -990,7 +991,7 @@ class Armv7Cpu(Cpu):
 
     @instruction
     def CMP(cpu, reg, compare):
-        logger.debug("executing instr CMP") # IVAN DEBUG
+        #logger.debug("executing instr CMP") # IVAN DEBUG
         notcmp = ~compare.read() & Mask(cpu.address_bit_size)
         cpu._ADD(reg.read(), notcmp, 1)
 

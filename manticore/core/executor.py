@@ -459,7 +459,7 @@ class Executor(Eventful):
                         # Allows to terminate manticore worker on user request
                         while not self.is_shutdown():
 			    #print "Going to execute a state", current_state
-                            logger.info("Going to execute a state") # IVAN DEBUG
+                            #logger.info("Going to execute a state") # IVAN DEBUG
                             if not current_state.execute():
                                 break
 			    # IVAN DEBUG

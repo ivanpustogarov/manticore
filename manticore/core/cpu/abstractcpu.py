@@ -831,7 +831,7 @@ class Cpu(Eventful):
             return
 
         name = self.canonicalize_instruction_name(insn)
-        logger.info(name) # IVAN	
+        #logger.info(name) # IVAN DEBUG
 
         if logger.level == logging.DEBUG:
             logger.debug(self.render_instruction(insn))
@@ -841,11 +841,11 @@ class Cpu(Eventful):
         try:
             implementation = getattr(self, name, None)
 
-            logger.info("impelementation={}".format(implementation)) # IVAN	
+            #logger.info("impelementation={}".format(implementation)) # IVAN	
             if implementation is not None:
-                logger.info("before impl") # IVAN DEBUG
+                #logger.info("before impl") # IVAN DEBUG
                 implementation(*insn.operands)
-                logger.info("after impl") # IVAN DEBUG
+                #logger.info("after impl") # IVAN DEBUG
 
             else:
                 text_bytes = ' '.join('%02x' % x for x in insn.bytes)
@@ -942,7 +942,7 @@ def instruction(old_method):
     # This should decorate every instruction implementation
     @wraps(old_method)
     def new_method(cpu, *args, **kw_args):
-        logger.info("Inside intruction abstractcpu decorator, old_method = {}".format(old_method)) # IVAN DEBUG
+        #logger.info("Inside intruction abstractcpu decorator, old_method = {}".format(old_method)) # IVAN DEBUG
         cpu.PC += cpu.instruction.size
         return old_method(cpu, *args, **kw_args)
     new_method.old_method = old_method
