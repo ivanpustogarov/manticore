@@ -38,7 +38,8 @@ def instruction(body):
         else:
             if issymbolic(should_execute):
                 # Let's remember next time we get here we should not do this again
-                logger.info("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
+                #logger.error("@intruction: should_execute = {}".format(should_execute)) # IVAN DEBUG
+                #logger.error("symbolic instruction at cpu.PC = {:x}".format(cpu.PC)) # IVAN DEBUG
                 cpu._at_symbolic_conditional = cpu.instruction.address
                 i_size = cpu.address_bit_size / 8
                 cpu.PC = Operators.ITEBV(cpu.address_bit_size, should_execute, cpu.PC - i_size,

@@ -65,16 +65,18 @@ class BareBones(Platform):
     RLIMIT_NOFILE = 7  # /* max number of open files */
     FCNTL_FDCWD = -100  # /* Special value used to indicate openat should use the cwd */
 
-    def __init__(self, program, argv=None, envp=None, disasm='capstone', **kwargs):
+    def __init__(self, program, argv=None, envp=None, disasm='capstone', systemmap=None, **kwargs):
         '''
         Builds a Linux OS platform
         :param string program: The path to ELF binary
         :param string disasm: Disassembler to be used
         :param list argv: The argv array; not including binary.
         :param list envp: The ENV variables.
+        :param string systemmap: The path to Sysytem.map; used to patch pritnk in the memorydump with 'bx lr'
         :ivar files: List of active file descriptors
         :type files: list[Socket] or list[File]
         '''
+        logger.debug("barebones.__init__(): systemmap=%s", systemmap)
         super(BareBones, self).__init__(path=program, **kwargs)
 
         self.program = program
@@ -98,7 +100,7 @@ class BareBones(Platform):
 
             self._init_cpu(self.arch)
             #self._init_std_fds()
-            self._execve(program, argv, envp)
+            self._execve(program, argv, envp, systemmap=systemmap)
 
     @classmethod
     def empty_platform(cls, arch):
@@ -143,7 +145,7 @@ class BareBones(Platform):
         self._function_abi = CpuFactory.get_function_abi(cpu, 'linux', arch)
         self._syscall_abi = CpuFactory.get_syscall_abi(cpu, 'linux', arch)
 
-    def _execve(self, program, argv, envp):
+    def _execve(self, program, argv, envp, systemmap=None):
         '''
         Load `program` and establish program state, such as stack and arguments.
 
@@ -154,9 +156,9 @@ class BareBones(Platform):
         argv = [] if argv is None else argv
         envp = [] if envp is None else envp
 
-        logger.debug("Loading %s as a %s elf", program, self.arch)
+        logger.debug("Loading %s as a %s elf, argv = %s, systemmap=%s", program, self.arch, argv, systemmap)
 
-        self.load(program)
+        self.load(program,systemmap)
         self._arch_specific_init()
 
         self._stack_top = self.current.STACK
@@ -499,12 +501,48 @@ class BareBones(Platform):
     #    # ARGC
     #    cpu.push_int(len(argvlst))
 
-    def load(self, filename):
+    # System.map format: '80100044 T cpu_ca8_reset'
+    def get_symbol_address(self, systemmap, symbol):
+        ARM_ADDRESS_HEX_LENGTH = 8
+        with open(systemmap, 'r') as content_file:
+            content = content_file.read()
+	    s_loc = content.find(symbol)
+            if s_loc == -1:
+	        return None
+            s_addr_s = content[s_loc-ARM_ADDRESS_HEX_LENGTH:s_loc]
+            s_addr = int(s_addr_s, 16) # Address in System.map are in hex => base=16
+	    return s_addr
+   
+    def patch_kernel(self, mem_image, image_vaddr, image_sz, systemmap, symbol):
+        '''
+	Replace the beginning of function 'symbol' to 'bx lr' (i.e. return immediately)
+
+	:param bytearray mem_image elf segment contents
+	:param int image_vaddr elf segment load address
+	:param str systemmap path to Symbol.map (used to find the address of 'symbol'
+	'''
+        s_addr = self.get_symbol_address(systemmap, symbol)
+	if(s_addr == None):
+	  return -1
+        if (s_addr < image_vaddr) or (s_addr > image_vaddr + image_sz):
+          return;
+        s_offset = s_addr-image_vaddr;
+        logger.debug("Patching %s @ [0x%lx, ofsset=0x%lx]\n", symbol, s_addr, s_offset);
+        assert(s_offset < image_sz)
+        # Patch with ret wich is 'bx lr'
+        mem_image[s_offset] = 0x1e; # rasm2 -a arm -b 32 'bx lr' => 1eff2fe1
+        mem_image[s_offset+1] = 0xff
+        mem_image[s_offset+2] = 0x2f
+        mem_image[s_offset+3] = 0xe1
+	return 0
+
+    def load(self, filename, systemmap):
         '''
         Loads and an ELF program in memory and prepares the initial CPU state.
         Creates the stack and loads the environment variables and the arguments in it.
 
         :param filename: pathname of the file to be executed. (used for auxv)
+        :param systemmap: pathname System.map (used for patching printk)
         :raises error:
             - 'Not matching cpu': if the program is compiled for a different architecture
             - 'Not matching memory': if the program is compiled for a different address size
@@ -581,8 +619,14 @@ class BareBones(Platform):
 	    #print elf_segment.stream
             fcopy = elf_segment.stream
 	    fcopy.seek(offset)
-	    segment_contents = fcopy.read(memsz)
+	    # Retrun type from fcopy.read() is 'str' which is immutable
+	    segment_contents = bytearray(fcopy.read(memsz))
+	    if systemmap:
+	        self.patch_kernel(segment_contents, vaddr, memsz, systemmap, " T printk\n")
+            # data_init can be 'str' or 'bytearray' (in latter case it will be deep copied to internal _data
             cpu.memory.mmap(base+vaddr, memsz, 'rwx', data_init=segment_contents, name='dump')
+
+
 	    #print hex(ord(s[0])), hex(ord(s[1])), hex(ord(s[2])), hex(ord(s[]3))
             #base = cpu.memory.mmapFile(hint, memsz, perms, elf_segment.stream.name, offset) - vaddr
 
@@ -2073,7 +2117,7 @@ class SBareBones(BareBones):
     """
 
     def __init__(self, programs, argv=None, envp=None, symbolic_files=None,
-                 disasm='capstone'):
+                 disasm='capstone', systemmap=None):
         print "DEBUG: Insdie SBareBones.__init__()"
         argv = [] if argv is None else argv
         envp = [] if envp is None else envp
@@ -2085,7 +2129,8 @@ class SBareBones(BareBones):
         super(SBareBones, self).__init__(programs,
                                      argv=argv,
                                      envp=envp,
-                                     disasm=disasm)
+                                     disasm=disasm,
+				     systemmap=systemmap)
 
     def _mk_proc(self, arch):
         if arch in {'i386', 'armv7'}:

@@ -480,7 +480,7 @@ class Executor(Eventful):
                         # setstate()
 
                         logger.debug("Generic state fork on condition")
-                        logger.info("Generic state fork on condition") # IVAN DEBUG
+                        #logger.info("Generic state fork on condition") # IVAN DEBUG
                         current_state = self.fork(current_state, e.expression, e.policy, e.setstate)
 
                     except TerminateState as e:

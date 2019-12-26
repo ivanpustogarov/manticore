@@ -111,7 +111,7 @@ def make_linux(program, argv=None, env=None, symbolic_files=None, concrete_start
                                                           label='STDIN'))
     return initial_state
 
-def make_barebones(program, argv=None, env=None, symbolic_files=None, concrete_start=''):
+def make_barebones(program, argv=None, env=None, symbolic_files=None, concrete_start='', systemmap=None):
     print "Hi there"
     env = {} if env is None else env
     argv = [] if argv is None else argv
@@ -121,7 +121,7 @@ def make_barebones(program, argv=None, env=None, symbolic_files=None, concrete_s
 
     constraints = ConstraintSet()
     platform = barebones.SBareBones(program, argv=argv, envp=env,
-                            symbolic_files=symbolic_files)
+                            symbolic_files=symbolic_files, systemmap=systemmap)
 
     initial_state = State(constraints, platform)
 
@@ -306,7 +306,7 @@ class Manticore(Eventful):
             raise Exception('Invalid binary: {}'.format(path))
 
     @classmethod
-    def barebones(cls, path, argv=None, envp=None, symbolic_files=None, concrete_start='', **kwargs):
+    def barebones(cls, path, argv=None, envp=None, symbolic_files=None, concrete_start='', systemmap=None, **kwargs):
         """
         Constructor for Linux binary analysis.
 
@@ -323,7 +323,7 @@ class Manticore(Eventful):
         :rtype: Manticore
         """
         try:
-            return cls(make_barebones(path, argv, envp, symbolic_files, concrete_start), **kwargs)
+            return cls(make_barebones(path, argv, envp, symbolic_files, concrete_start, systemmap), **kwargs)
         except elftools.common.exceptions.ELFError:
             raise Exception('Invalid binary: {}'.format(path))
 
