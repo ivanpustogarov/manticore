@@ -832,6 +832,9 @@ class Cpu(Eventful):
 
         name = self.canonicalize_instruction_name(insn)
         #logger.info(name) # IVAN DEBUG
+        #logger.info("R1 = {}".format(self.R1)) # IVAN DEBUG
+        #logger.info("R2 = {}".format(self.R2)) # IVAN DEBUG
+        #logger.info("R4 = {}".format(self.R4)) # IVAN DEBUG
 
         if logger.level == logging.DEBUG:
             logger.debug(self.render_instruction(insn))
@@ -845,6 +848,7 @@ class Cpu(Eventful):
             if implementation is not None:
                 #logger.info("before impl") # IVAN DEBUG
                 implementation(*insn.operands)
+                #logger.info("insn.operands = {}".format(insn.operands)) # IVAN DEBUG
                 #logger.info("after impl") # IVAN DEBUG
 
             else:
@@ -883,7 +887,7 @@ class Cpu(Eventful):
         except unicorn.UcError as e:
             if e.errno == unicorn.UC_ERR_INSN_INVALID:
                 text_bytes = ' '.join('%02x' % x for x in insn.bytes)
-                logger.error("Unimplemented instruction: 0x%016x:\t%s\t%s\t%s",
+                logger.error("Unimplemented instruction even with Unicorn: 0x%016x:\t%s\t%s\t%s",
                              insn.address, text_bytes, insn.mnemonic, insn.op_str)
             raise InstructionEmulationError(str(e))
         finally:

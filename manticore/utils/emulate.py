@@ -189,6 +189,8 @@ class UnicornEmulator(object):
                 self._emu.mem_write(address, ''.join(values))
 
             # Try emulation
+
+            #logger.info("R4 = {}".format(self.R4)) # IVAN DEBUG
             self._should_try_again = False
 
             self._step(instruction)
@@ -225,7 +227,16 @@ class UnicornEmulator(object):
         # aggressive. Once capstone adds consistent support for accessing
         # referred registers, make this only concretize those registers being
         # read from.
+        # IVAN: get list of operands for the instruction which are registers
+        current_inst_reg_operands = list()
+        for op in instruction.operands:
+            if op.type == 'register':
+                current_inst_reg_operands.append(op.reg) # op.reg register name as string, e.g. 'R1'
+
         for reg in registers:
+            # IVAN: Next if reg is not among register operands
+            if reg not in current_inst_reg_operands:
+                continue
             val = self._cpu.read_register(reg)
             if issymbolic(val):
                 from ..core.cpu.abstractcpu import ConcretizeRegister
@@ -268,6 +279,8 @@ class UnicornEmulator(object):
 
         # Bring back Unicorn registers to Manticore
         for reg in registers:
+            if reg not in current_inst_reg_operands:
+                continue
             val = self._emu.reg_read(self._to_unicorn_id(reg))
             self._cpu.write_register(reg, val)
 
